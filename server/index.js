@@ -9,10 +9,6 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Configurar la ruta de FFmpeg
-//ffmpeg.setFfmpegPath('C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe');
-//ffmpeg.setFfprobePath('C:\\ProgramData\\chocolatey\\bin\\ffprobe.exe');
-
 const app = express();
 const PORT = 3001;
 
@@ -153,22 +149,6 @@ app.post('/api/start-stream', async (req, res) => {
         '-hls_segment_filename', path.join(hlsDir, `${streamId}_%03d.ts`)
       ]);
 
-    // TEMPORALMENTE DESACTIVADO: MP4 para grabación
-    // if (recordingPath) {
-    //   console.log('📹 Agregando segundo output para grabación MP4');
-    //   stream
-    //     .output(recordingPath)
-    //     .outputOptions([
-    //       '-c:v', 'libx264',
-    //       '-preset', 'fast',
-    //       '-crf', '20',
-    //       '-c:a', 'aac',
-    //       '-b:a', '128k',
-    //       '-f', 'mp4',
-    //       '-movflags', '+faststart'
-    //     ]);
-    // }
-
     stream
       .on('start', (commandLine) => {
         console.log('✅ FFmpeg iniciado:', commandLine);
@@ -279,36 +259,84 @@ app.post('/api/start-stream', async (req, res) => {
   }
 });
 
-// Endpoint para detener stream
-app.post('/api/stop-stream', (req, res) => {
-  console.log('\n🛑 PETICIÓN: Detener Stream');
-  const { streamId = 'default' } = req.body;
-  console.log('Stream ID:', streamId);
+// Objeto para mantener los streams de escritura activos
+const activeWriteStreams = new Map();
 
-  if (activeStreams.has(streamId)) {
-    console.log('⏹️  Deteniendo stream activo...');
-    const stream = activeStreams.get(streamId);
-    stream.kill('SIGKILL');
-    activeStreams.delete(streamId);
-    console.log('✅ Stream detenido');
+// Endpoint para recibir los chunks de video
+app.post('/api/stream-chunk/:streamId', (req, res) => {
+  const { streamId } = req.params;
+  const { fileName } = req.query;
+  const filePath = path.join(recordingsDir, `${fileName || streamId}.webm`);
+  const folderPath = path.dirname(filePath);
 
-    // Limpiar archivos HLS
-    console.log('🧹 Limpiando archivos HLS...');
-    const files = fs.readdirSync(hlsDir);
-    let deletedCount = 0;
-    files.forEach(file => {
-      if (file.startsWith(streamId)) {
-        fs.unlinkSync(path.join(hlsDir, file));
-        deletedCount++;
+  if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+
+  if (!activeWriteStreams.has(streamId)) {
+    // Creamos el stream con flags de 'a' (append)
+    const writeStream = fs.createWriteStream(filePath, { flags: 'a' });
+    activeWriteStreams.set(streamId, writeStream);
+    console.log(`🔴 Grabando en tiempo real: ${filePath}`);
+  }
+
+  const currentStream = activeWriteStreams.get(streamId);
+
+  req.on('data', (chunk) => {
+    currentStream.write(chunk); // Escribe el pedazo recibido
+  });
+
+  req.on('end', () => {
+    res.status(200).send('OK');
+  });
+});
+
+app.post('/api/stop-disk-write/:streamId', (req, res) => {
+  const { streamId } = req.params;
+  
+  if (activeWriteStreams.has(streamId)) {
+    const writeStream = activeWriteStreams.get(streamId);
+    const originalPath = writeStream.path;
+    
+    console.log(`⏹️ Deteniendo grabación para: ${streamId}`);
+    
+    // 1. Forzamos el cierre del stream de escritura
+    writeStream.end();
+    activeWriteStreams.delete(streamId);
+
+    // 2. Pequeña espera para que el sistema operativo libere el archivo
+    setTimeout(() => {
+      if (!fs.existsSync(originalPath)) {
+        console.error("❌ El archivo original no existe en:", originalPath);
+        return;
       }
-    });
-    console.log(`🗑️  ${deletedCount} archivo(s) eliminado(s)`);
 
-    res.json({ success: true, message: 'Stream detenido' });
+      // Cambiamos a .mp4 para asegurar que se pueda adelantar/atrasar
+      const finalMp4Path = originalPath.replace('.webm', '.mp4');
+      console.log(`🛠️ Reconstruyendo y convirtiendo a MP4: ${finalMp4Path}`);
+
+      ffmpeg(originalPath)
+        .outputOptions([
+          '-c copy',           // Copia directa (rápido)
+          '-movflags +faststart' // Mueve el índice al inicio del archivo (vital para adelantar)
+        ])
+        .save(finalMp4Path)
+        .on('start', (cmd) => console.log('🚀 FFmpeg ejecutando:', cmd))
+        .on('end', () => {
+          console.log(`✅ ¡ÉXITO! Video reparado y navegable: ${finalMp4Path}`);
+          // Opcional: Borrar el .webm original si el .mp4 se creó bien
+          try { fs.unlinkSync(originalPath); } catch(e) {}
+        })
+        .on('error', (err) => {
+          console.error('❌ Error fatal en FFmpeg:', err.message);
+        });
+    }, 1000); // 1 segundo de espera para mayor seguridad
+
+    res.json({ success: true, message: 'Reparación iniciada' });
   } else {
+    console.warn(`⚠️ No se encontró stream activo para ID: ${streamId}`);
     res.status(404).json({ error: 'Stream no encontrado' });
   }
 });
+//********************** */
 
 // Endpoint para verificar estado del stream
 app.get('/api/stream-status/:streamId?', (req, res) => {
