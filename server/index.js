@@ -20,21 +20,25 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Servir archivos estáticos (HLS) con headers correctos
+const recordingsDir = 'C:\\recordings'; 
+const hlsDir = path.join(__dirname, 'hls');
+
+// Servir archivos estáticos
 app.use('/hls', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
   next();
-}, express.static(path.join(__dirname, 'hls')));
-app.use('/recordings', express.static(path.join(__dirname, 'recordings')));
+}, express.static(hlsDir));
+
+// IMPORTANTE: Servir las grabaciones desde la nueva ruta en C:
+app.use('/recordings', express.static(recordingsDir));
 
 // Crear directorios si no existen
-const hlsDir = path.join(__dirname, 'hls');
-const recordingsDir = path.join(__dirname, 'recordings');
 if (!fs.existsSync(hlsDir)) {
   fs.mkdirSync(hlsDir, { recursive: true });
 }
 if (!fs.existsSync(recordingsDir)) {
+  console.log('📁 Creando carpeta global en C:\\recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
 }
 
