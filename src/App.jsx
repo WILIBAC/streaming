@@ -271,16 +271,22 @@ function App() {
     navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
     return () => {
       navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
-      
-      // Usamos el ID de la propiedad del recorder
-      Object.entries(mediaRecordersRef.current).forEach(([deviceId, recorder]) => {
+
+      // Detener grabadores y avisar al servidor
+      Object.entries(mediaRecordersRef.current).forEach(([id, recorder]) => {
         if (recorder && recorder.state !== 'inactive') {
           recorder.stop();
+          fetch(`http://localhost:3001/api/stop-disk-write/${id}`, { method: 'POST' }).catch(() => {});
         }
       });
 
-      Object.values(streamsRef.current).forEach(s => s?.getTracks().forEach(t => t.stop()));
+      // IMPORTANTE: Detener físicamente el hardware de la cámara
+      Object.values(streamsRef.current).forEach(stream => {
+        stream?.getTracks().forEach(track => track.stop());
+      });
+
       if (timerRef.current) clearInterval(timerRef.current);
+      
     };
   }, []);
 
@@ -330,6 +336,12 @@ function App() {
                   <option value={0}>{t('noLimit')}</option>
                   <option value={1800}>30 {t('minutes')}</option>
                   <option value={3600}>1 {t('hour')}</option>
+                  <option value={7200}>2 {t('hours')}</option>
+                  <option value={10800}>3 {t('hours')}</option>
+                  <option value={14400}>4 {t('hours')}</option>
+                  <option value={18000}>5 {t('hours')}</option>
+                  <option value={21600}>6 {t('hours')}</option>
+                  <option value={43200}>12 {t('hours')}</option>
                 </select>
               </div>
               <div className="md:col-span-2">
@@ -337,6 +349,9 @@ function App() {
                 <select name="tipoEstudio" value={patientData.tipoEstudio} onChange={handleInputChange} className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg">
                   <option value="EEG">{t('studyTypes.eeg')}</option>
                   <option value="EMG">{t('studyTypes.emg')}</option>
+                  <option value="Evoked">{t('studyTypes.evoked')}</option>
+                  <option value="Sleep">{t('studyTypes.sleep')}</option>
+                  <option value="Mapping">{t('studyTypes.mapping')}</option>
                 </select>
               </div>
 
