@@ -4,18 +4,32 @@ import Hls from 'hls.js';
 import { useLanguage } from './i18n';
 
 // FUNCIONALIDAD NUEVA: Función para enviar fragmentos al servidor
+// 1. Definimos la URL base usando variables de entorno de Vite
+const API_URL = import.meta.env.VITE_API_URL || 'https://willodean-nonponderable-sanjuanita.ngrok-free.dev';
+
 const sendChunkToBackend = async (streamId, fileName, blob) => {
   if (blob.size === 0) return;
   try {
-    await fetch(`http://localhost:3001/api/stream-chunk/${streamId}?fileName=${fileName}`, {
+    // 2. Usamos la constante API_URL en lugar de localhost fijo
+    await fetch(`${API_URL}/api/stream-chunk/${streamId}?fileName=${fileName}`, {
       method: 'POST',
       body: blob,
       headers: { 'Content-Type': 'application/octet-stream' }
     });
   } catch (err) {
-    console.warn("Error enviando fragmento de seguridad:", err);
+    console.warn("Error enviando fragmento al servidor médico:", err);
   }
 };
+
+// ... dentro de startStreaming, busca el fetch de 'start-stream' y cámbialo:
+const response = await fetch(`${API_URL}/api/start-stream`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ rtspUrl: ipCamera.url, streamId: deviceId, patientData: patientData })
+});
+
+// ... dentro de recorder.onstop y useEffect (limpieza), cambia el fetch de 'stop-disk-write':
+fetch(`${API_URL}/api/stop-disk-write/${backendStreamId}`, { method: 'POST' }).catch(()=>{});
 
 function App() {
   const { t } = useLanguage();
@@ -110,7 +124,7 @@ function App() {
 
         if (ipCamera) {
           if (ipCamera.isRtsp) {
-            const response = await fetch('http://localhost:3001/api/start-stream', {
+            const response = await fetch(`${API_URL}/api/start-stream`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ rtspUrl: ipCamera.url, streamId: deviceId, patientData: patientData })
@@ -183,7 +197,7 @@ function App() {
         };
 
         recorder.onstop = () => {
-          fetch(`http://localhost:3001/api/stop-disk-write/${backendStreamId}`, { method: 'POST' }).catch(()=>{});
+          fetch(`${API_URL}/api/stop-disk-write/${backendStreamId}`, { method: 'POST' }).catch(()=>{});
           recordings[deviceId] = chunks;
           if (Object.keys(recordings).length === selectedCameras.length) {
             saveAllRecordings(recordings);
@@ -276,7 +290,7 @@ function App() {
       Object.entries(mediaRecordersRef.current).forEach(([id, recorder]) => {
         if (recorder && recorder.state !== 'inactive') {
           recorder.stop();
-          fetch(`http://localhost:3001/api/stop-disk-write/${id}`, { method: 'POST' }).catch(() => {});
+          fetch(`${API_URL}/api/stop-disk-write/${id}`, { method: 'POST' }).catch(() => {});
         }
       });
 
