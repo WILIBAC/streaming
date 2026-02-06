@@ -3,14 +3,12 @@ import { Camera, Video, User, FileText, Save, StopCircle, Clock } from 'lucide-r
 import Hls from 'hls.js';
 import { useLanguage } from './i18n';
 
-// FUNCIONALIDAD NUEVA: Función para enviar fragmentos al servidor
-// 1. Definimos la URL base usando variables de entorno de Vite
 const API_URL = import.meta.env.VITE_API_URL || 'https://willodean-nonponderable-sanjuanita.ngrok-free.dev';
 
 const sendChunkToBackend = async (streamId, fileName, blob) => {
   if (blob.size === 0) return;
   try {
-    // 2. Usamos la constante API_URL en lugar de localhost fijo
+    // Usamos la constante API_URL en lugar de localhost fijo
     await fetch(`${API_URL}/api/stream-chunk/${streamId}?fileName=${fileName}`, {
       method: 'POST',
       body: blob,
@@ -21,14 +19,12 @@ const sendChunkToBackend = async (streamId, fileName, blob) => {
   }
 };
 
-// ... dentro de startStreaming, busca el fetch de 'start-stream' y cámbialo:
 const response = await fetch(`${API_URL}/api/start-stream`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ rtspUrl: ipCamera.url, streamId: deviceId, patientData: patientData })
 });
 
-// ... dentro de recorder.onstop y useEffect (limpieza), cambia el fetch de 'stop-disk-write':
 fetch(`${API_URL}/api/stop-disk-write/${backendStreamId}`, { method: 'POST' }).catch(()=>{});
 
 function App() {
@@ -191,7 +187,6 @@ function App() {
         recorder.ondataavailable = (e) => {
           if (e.data.size > 0) {
             chunks.push(e.data);
-            // Ahora 'backendStreamId' y 'fileName' sí están definidos
             sendChunkToBackend(backendStreamId, fileName, e.data); 
           }
         };
@@ -204,7 +199,7 @@ function App() {
           }
         };
 
-        recorder.start(1000); // Inicia el ciclo de envío cada segundo
+        recorder.start(1000);
         mediaRecordersRef.current[deviceId] = recorder;
       }
       
@@ -227,7 +222,7 @@ function App() {
     // Recorremos los grabadores activos
     Object.entries(mediaRecordersRef.current).forEach(([deviceId, recorder]) => {
       if (recorder && recorder.state !== 'inactive') {
-        recorder.stop(); // Esto disparará el recorder.onstop que ya tiene el fetch correcto
+        recorder.stop();
       }
     });
 
