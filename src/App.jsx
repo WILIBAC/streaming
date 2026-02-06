@@ -19,14 +19,6 @@ const sendChunkToBackend = async (streamId, fileName, blob) => {
   }
 };
 
-const response = await fetch(`${API_URL}/api/start-stream`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ rtspUrl: ipCamera.url, streamId: deviceId, patientData: patientData })
-});
-
-fetch(`${API_URL}/api/stop-disk-write/${backendStreamId}`, { method: 'POST' }).catch(()=>{});
-
 function App() {
   const { t } = useLanguage();
   const [step, setStep] = useState('form');
@@ -165,8 +157,6 @@ function App() {
           });
         }
 
-        // --- EL ORDEN CORRECTO EMPIEZA AQUÍ ---
-        
         // 1. Guardamos el stream en la referencia
         streamsRef.current[deviceId] = stream;
 
@@ -187,6 +177,7 @@ function App() {
         recorder.ondataavailable = (e) => {
           if (e.data.size > 0) {
             chunks.push(e.data);
+            // Ahora 'backendStreamId' y 'fileName' sí están definidos
             sendChunkToBackend(backendStreamId, fileName, e.data); 
           }
         };
@@ -222,7 +213,7 @@ function App() {
     // Recorremos los grabadores activos
     Object.entries(mediaRecordersRef.current).forEach(([deviceId, recorder]) => {
       if (recorder && recorder.state !== 'inactive') {
-        recorder.stop();
+        recorder.stop(); // Esto disparará el recorder.onstop que ya tiene el fetch correcto
       }
     });
 
